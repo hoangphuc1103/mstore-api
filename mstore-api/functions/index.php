@@ -78,7 +78,7 @@ function pushNotification($title, $message, $deviceToken)
 {
     $serverKey = get_option("mstore_firebase_server_key");
     if (isset($serverKey) && $serverKey != false) {
-        $body = ["notification" => ["title" => $title, "body" => $message, "click_action" => "FLUTTER_NOTIFICATION_CLICK"], 
+        $body = ["notification" => ["title" => $title, "body" => $message, "click_action" => "FLUTTER_NOTIFICATION_CLICK", "sound"=>"default"], 
         "data" => ["title" => $title, "body" => $message, "click_action" => "FLUTTER_NOTIFICATION_CLICK"], 
         "apns" => ["headers"=>["apns-priority" => "10"], "payload"=>["aps" => ["sound"=>"default"],],],
         "to" => $deviceToken];
@@ -450,7 +450,7 @@ function customProductResponse($response, $object, $request)
                     $attr_data['slug'] = $v;
                     $meta = get_post_meta($variation_id, 'attribute_'.$k, true);
                     $term = get_term_by('slug', $meta, $k);
-                    $attr_data['attribute_name'] = $term->name;
+                    $attr_data['attribute_name'] = $term == false ? null : $term->name;
                     $attr_arr[]=$attr_data;
                 }
                 $variation_data['attributes_arr'] = $attr_arr;

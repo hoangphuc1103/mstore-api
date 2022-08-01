@@ -2,8 +2,8 @@
 Contributors:      InspireUI Ltd
 Tags:              mstore, fluxstore, react-native, flutter, inspireui, ios, android
 Requires at least: 4.4
-Tested up to:      5.9.2
-Stable tag:        3.4.6
+Tested up to:      6.0.0
+Stable tag:        3.6.4
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -43,6 +43,55 @@ Faster- Smoother- Closer.
 1. Click Install.
 
 == Changelog ==
+= 3.6.4 =
+  * Support Flutterwave payment method
+
+= 3.6.3 =
+  * Support PayStack payment method
+
+= 3.6.2 =
+  * Fix shipping methods to response required_shipping value
+
+= 3.6.1 =
+  * Fix to show payment methods based on the country
+
+= 3.6.0 =
+  * Fix to show payment methods based on the country
+
+= 3.5.9 =
+  * Fix add-on checkout issue
+
+= 3.5.8 =
+  * Fix checkout issue
+
+= 3.5.7 =
+  * Fix checkout issue
+
+= 3.5.6 =
+  * Fix add-on checkout issue
+
+= 3.5.5 =
+  * Remove required card for free level for paid membership pro
+
+= 3.5.4 =
+  * Fix wordpress 6
+
+= 3.5.3 =
+  * Sending email after creating order
+  * Delete user api
+
+= 3.5.2 =
+  * Support Listing Api
+
+= 3.5.1 =
+  * Support Digits SMS login
+
+= 3.5.0 =
+  * Fix load attributes for product variant
+
+= 3.4.9 =
+  * Improve home cache performance
+
 = 3.4.8 =
   * Support Paid Membership Pro
 

@@ -269,6 +269,14 @@ class FlutterUserController extends FlutterBaseController
                 }
             ),
         ));
+
+        register_rest_route($this->namespace, '/delete_account', array(
+            array(
+                'methods' => WP_REST_Server::DELETABLE,
+                'callback' => array($this, 'delete_account'),
+                'permission_callback' => array($this, 'custom_delete_item_permissions_check'),
+            ),
+        ));
     }
 
 
@@ -340,14 +348,12 @@ class FlutterUserController extends FlutterBaseController
         $message .= sprintf(__('Username: %s'), $user_login) . "\r\n\r\n";
         $message .= __('If this was a mistake, just ignore this email and nothing will happen.') . "\r\n\r\n";
         $message .= __('To reset your password, visit the following address:') . "\r\n\r\n";
-        $message .= '<' . network_site_url("wp-login.php?action=rp&key=$key&login=" . rawurlencode($user_login), 'login') . ">\r\n";
+        $message .= network_site_url("wp-login.php?action=rp&key=$key&login=" . rawurlencode($user_login), 'login') . "\r\n";
         $title = sprintf(__('[%s] Password Reset'), $site_name);
         $title = apply_filters('retrieve_password_title', $title, $user_login, $user_data);
         $message = apply_filters('retrieve_password_message', $message, $key, $user_login, $user_data);
 
-        if ($message && !wp_mail($user_email, wp_specialchars_decode($title), $message)) {
-            return parent::sendError("retrieve_password_email_failure", "The email could not be sent. Your site may not be correctly configured to send emails.", 401);
-        }
+        wp_mail($user_email, wp_specialchars_decode($title), $message);
 
         return new WP_REST_Response(array(
             'status' => 'success',
@@ -362,7 +368,7 @@ class FlutterUserController extends FlutterBaseController
         $emailReq = $params["email"];
         $role = $params["role"];
         if (isset($role)) {
-            if (!in_array($role, ['subscriber', 'wcfm_vendor', 'seller', 'wcfm_delivery_boy', 'driver'], true)) {
+            if (!in_array($role, ['subscriber', 'wcfm_vendor', 'seller', 'wcfm_delivery_boy', 'driver','owner'], true)) {
                 return parent::sendError("invalid_role", "Role is invalid.", 400);
             }
         }
@@ -438,7 +444,7 @@ class FlutterUserController extends FlutterBaseController
         $dokan_enable_selling  = $params['dokan_enable_selling'];
         $wcfm_membership_application_status = $params['wcfm_membership_application_status'];
         if (isset($role)) {
-            if (!in_array($role, ['subscriber', 'wcfm_vendor', 'seller', 'wcfm_delivery_boy', 'driver'], true)) {
+            if (!in_array($role, ['subscriber', 'wcfm_vendor', 'seller', 'wcfm_delivery_boy', 'driver','owner'], true)) {
                 return parent::sendError("invalid_role", "Role is invalid.", 400);
             }
         }
@@ -1358,5 +1364,26 @@ class FlutterUserController extends FlutterBaseController
         $response['user_login'] = $user->user_login;
         $response['user'] = $this->getResponseUserInfo($user);
         return $response;
+    }
+
+    function custom_delete_item_permissions_check($request)
+    {
+        $cookie = $request->get_header("User-Cookie");
+        if (isset($cookie) && $cookie != null && parent::checkApiPermission()) {
+            $user_id = validateCookieLogin($cookie);
+            if (is_wp_error($user_id)) {
+                return false;
+            }
+            $request["id"] = $user_id;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    function delete_account($request)
+    {
+        require_once(ABSPATH.'wp-admin/includes/user.php');
+        return wp_delete_user($request["id"]);
     }
 }

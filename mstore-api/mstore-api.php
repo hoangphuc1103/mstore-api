@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the MStore and FluxStore Mobile App
- * Version: 3.5.1
+ * Version: 3.6.4
  * Author: InspireUI
  * Author URI: https://inspireui.com
  *
@@ -28,11 +28,15 @@ include_once plugin_dir_path(__FILE__) . "functions/utils.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-tera-wallet.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-membership/index.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-paytm.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-paystack.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-flutterwave.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-paid-memberships-pro.php";
+include_once plugin_dir_path(__FILE__) . "controllers/listing-rest-api/class.api.fields.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-blog.php";
 
 class MstoreCheckOut
 {
-    public $version = '3.5.1';
+    public $version = '3.6.4';
 
     public function __construct()
     {
@@ -42,7 +46,7 @@ class MstoreCheckOut
         /**
          * Prepare data before checkout by webview
          */
-        add_action('template_redirect', 'prepare_checkout');
+        add_action('template_redirect', 'flutter_prepare_checkout');
 
         include_once(ABSPATH . 'wp-admin/includes/plugin.php');
         if (is_plugin_active('woocommerce/woocommerce.php') == false) {
@@ -59,12 +63,80 @@ class MstoreCheckOut
             include_once plugin_dir_path(__FILE__) . "controllers/helpers/vendor-admin-woo-helper.php";
             include_once plugin_dir_path(__FILE__) . "controllers/helpers/vendor-admin-wcfm-helper.php";
             include_once plugin_dir_path(__FILE__) . "controllers/helpers/vendor-admin-dokan-helper.php";
+            include_once plugin_dir_path(__FILE__) . "controllers/flutter-customer.php";
         }
 
         $order = filter_has_var(INPUT_GET, 'code') && strlen(filter_input(INPUT_GET, 'code')) > 0 ? true : false;
         if ($order) {
             add_filter('woocommerce_is_checkout', '__return_true');
         }
+
+        /*
+		add_filter( 'woocommerce_get_item_data', 'display_custom_product_field_data_mstore_api', 10, 2 );
+
+		function display_custom_product_field_data_mstore_api( $cart_data, $cart_item ) {
+
+			if( !empty( $cart_data ) ){
+                $custom_items = $cart_data;
+
+				$code = sanitize_text_field($_GET['code']) ?: get_transient( 'mstore_code' );
+				set_transient( 'mstore_code', $code, 600 );
+
+				global $wpdb;
+				$table_name = $wpdb->prefix . "mstore_checkout";
+				$item = $wpdb->get_row("SELECT * FROM $table_name WHERE code = '$code'");
+				if ($item) {
+					$data = json_decode(urldecode(base64_decode($item->order)), true);
+					$line_items = $data['line_items'];
+					$product_ids = [];
+					foreach($line_items as $line => $item) {
+						$product_ids[$item['product_id']] = $item;
+					}
+
+					if (array_key_exists($cart_item['product_id'], $product_ids)) {
+						if ($varian = $product_ids[$cart_item['product_id']]) {
+							$variations = $varian['meta_data'];
+							foreach($variations as $v => $f) {
+								preg_match('#\((.*?)\)#', $f['key'], $match);
+								$val = $match[1];
+								$custom_items[] = array(
+									'key'       => $f['value'],
+									'value'     => $val,
+									'display'   => $val,
+								);
+							}
+						}
+					}
+				}
+
+			    return $custom_items;
+            }
+            return $cart_data;
+		}
+
+
+		add_action( 'woocommerce_before_calculate_totals', 'add_custom_price_mstore_api' );
+
+		function add_custom_price_mstore_api( $cart_object ) {
+			foreach ( WC()->cart->get_cart() as $cart_item_key => $cart_item ) {
+				$add_price = 0;
+				if ($variations = $cart_item['variation']) {
+					foreach($variations as $v => $f) {
+						preg_match('#\((.*?)\)#', $v, $match);
+                        if(is_array($match) && array_key_exists(1,$match)){
+                            $val = $match[1];
+                            $cents = filter_var($val, FILTER_SANITIZE_NUMBER_INT);
+                            if(is_numeric($cents)){
+                                $add_price += floatval($cents / 100);
+                            }
+                        }
+					}
+				}
+				$new_price = $cart_item['data']->get_price() + $add_price;
+				$cart_item['data']->set_price($new_price);   
+			}
+		}
+        */
 
         add_action('wp_print_scripts', array($this, 'handle_received_order_page'));
 
@@ -250,13 +322,13 @@ function load_mstore_templater()
 }
 
 //custom rest api
-function mstore_users_routes()
+function flutter_users_routes()
 {
     $controller = new FlutterUserController();
     $controller->register_routes();
 }
 
-add_action('rest_api_init', 'mstore_users_routes');
+add_action('rest_api_init', 'flutter_users_routes');
 add_action('rest_api_init', 'mstore_check_payment_routes');
 function mstore_check_payment_routes()
 {
@@ -356,15 +428,17 @@ function custom_woocommerce_rest_prepare_product_variation_object($response, $ob
 }
 
 // Prepare data before checkout by webview
-function prepare_checkout()
+function flutter_prepare_checkout()
 {
 
     if(empty($_GET) && isset($_SERVER['HTTP_REFERER'])){
 		$url_components = parse_url($_SERVER['HTTP_REFERER']);
-		parse_str($url_components['query'], $params);
-		if(!empty($params)){
-			$_GET = $params;
-		}
+        if (isset($url_components['query'])) {
+            parse_str($url_components['query'], $params);
+            if(!empty($params)){
+                $_GET = $params;
+            }
+        }
 	}
     
     if (isset($_GET['mobile']) && isset($_GET['code'])) {
@@ -490,6 +564,7 @@ function prepare_checkout()
             WC()->cart->empty_cart();
 
             $products = $data['line_items'];
+
             foreach ($products as $product) {
                 $productId = absint($product['product_id']);
 
@@ -527,7 +602,9 @@ function prepare_checkout()
                             $cart_item_data['recharge_amount'] = $product['total'];
                         }
                     }
+
                     $woocommerce->cart->add_to_cart($productId, $quantity, 0, $attributes, $cart_item_data);
+
                 }
             }
 
@@ -572,6 +649,7 @@ function prepare_checkout()
             if (!empty($data['payment_method'])) {
                 WC()->session->set('chosen_payment_method', $data['payment_method']);
             }
+
             if (isset($data['customer_note']) && !empty($data['customer_note'])) {
                 $_POST["order_comments"] = sanitize_text_field($data['customer_note']);
                 $checkout_fields = WC()->checkout->__get("checkout_fields");
