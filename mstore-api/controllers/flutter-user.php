@@ -1007,6 +1007,11 @@ class FlutterUserController extends FlutterBaseController
         if (isset($params->shipping_postcode)) {
             update_user_meta($user_id, 'shipping_postcode', $params->shipping_postcode, '');
         }
+        if (isset($params->meta_data) && is_array($params->meta_data)) {
+            foreach ($params->meta_data as $item) {
+                update_user_meta($user_id, $item->key, $item->value, '');
+            }
+        }
 
         if (isset($params->avatar)) {
             $count = 1;
