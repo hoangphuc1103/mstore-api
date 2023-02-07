@@ -263,6 +263,29 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     return true;
                 }
             ));
+
+            //add address
+            register_rest_field('job_listing',
+                'newaddress',
+                array(
+                    'get_callback'  => array($this,'_rest_get_address_data'),
+                )
+            );
+
+            //add lat
+            register_rest_field( 'job_listing',
+                'newlat',
+                array(
+                    'get_callback'  => array($this,'_rest_get_lat_data'),
+                )
+            );
+
+            register_rest_field( 'job_listing',
+                'newlng',
+                array(
+                    'get_callback'  => array($this,'_rest_get_lng_data'),
+                )
+            );
         }
 
         /* --- meta field for gallery image --- */
@@ -979,6 +1002,39 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         // End of Listeo theme functions
         
+
+        function _rest_get_address_data( $object ) {
+            //get the Post Id
+            $listing_id = $object['id'];
+            global $wpdb;
+            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = '$listing_id'"; //wp_it_job_details is job table
+            $results = $wpdb->get_row($sql);
+                if($results) {
+                    return $results->address;
+            } else return ""; //return nothing 
+        }
+
+        function _rest_get_lat_data( $object ) {
+            //get the Post Id
+            $listing_id = $object['id'];
+            global $wpdb;
+            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = '$listing_id'"; //wp_it_job_details is job table
+            $results = $wpdb->get_row($sql);
+                if($results) {
+                    return $results->lat;
+            } else return ""; //return nothing 
+        } 
+
+        function _rest_get_lng_data( $object ) {
+            //get the Post Id
+            $listing_id = $object['id'];
+            global $wpdb;
+            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = '$listing_id'"; //wp_it_job_details is job table
+            $results = $wpdb->get_row($sql);
+                if($results) {
+                    return $results->lng;
+            } else return ""; //return nothing 
+        }
 
         // Blog section
         public function get_blog_image_feature($object)
@@ -1774,7 +1830,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                         return true;
                     }
                 ));
-
             }
 
         }
@@ -2140,4 +2195,3 @@ class FlutterTemplate extends WP_REST_Posts_Controller
     new FlutterTemplate;
     new TemplateExtendMyListing;
     new TemplateSearch;
-    

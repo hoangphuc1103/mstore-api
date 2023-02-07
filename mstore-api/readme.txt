@@ -3,7 +3,7 @@ Contributors:      InspireUI Ltd
 Tags:              mstore, fluxstore, react-native, flutter, inspireui, ios, android
 Requires at least: 4.4
 Tested up to:      6.0.0
-Stable tag:        3.6.7
+Stable tag:        3.8.3
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -43,6 +43,54 @@ Faster- Smoother- Closer.
 1. Click Install.
 
 == Changelog ==
+= 3.8.3 =
+  * Fix product variant issues
+
+= 3.8.2 =
+  * Update apple login api to save first name and last name
+
+= 3.8.1 =
+  * Fix mylisting api to show location, lat, long
+
+= 3.8.0 =
+  * Support to send sms via Digits
+
+= 3.7.9 =
+  * Add delete order api
+
+= 3.7.8 =
+  * Fix upload image
+
+= 3.7.7 =
+  * Fix validate zh config json
+
+= 3.7.6 =
+  * Add product rating counts api
+
+= 3.7.5 =
+  * Fix send email when register
+
+= 3.7.4 =
+  * Whitelist demo account
+
+= 3.7.3 =
+  * Fix security issue when upload config json file
+
+= 3.7.2 =
+  * Fix api to get products by vendor
+
+= 3.7.1 =
+  * Update Active Api
+
+= 3.7.0 =
+  * Fix some issues for Fluxstore Manager
+
+= 3.6.9 =
+  * Fix to upload image for variant product
+
+= 3.6.8 =
+  * Support api to add order note after paying by MyFatoorah
+
 = 3.6.7 =
   * Support api to add order note after paying by Tap
 

@@ -1,6 +1,6 @@
 <?php
-define("ACTIVE_API", "https://active.fluxbuilder.com/api/v1/active");
-define("DEACTIVE_API", "https://active.fluxbuilder.com/api/v1/deactive");
+define("ACTIVE_API", "https://active2.inspireui.com/api/v1/active");
+define("DEACTIVE_API", "https://active2.inspireui.com/api/v1/deactive");
 define("ACTIVE_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIiLCJpYXQiOjE1ODY5NDQ3Mjd9.-umQIC6DuTS_0J0Jj8lcUuUYGjq9OXp3cIM-KquTWX0");
 
 function verifyPurchaseCode($code)
@@ -462,7 +462,7 @@ function customProductResponse($response, $object, $request)
 
     $attributes = $product->get_attributes();
     $attributesData = [];
-    foreach ($attributes as $attr) {
+    foreach ($attributes as $key => $attr) {
         $check = $attr->is_taxonomy();
         if ($check) {
             $taxonomy = $attr->get_taxonomy_object();
@@ -474,7 +474,7 @@ function customProductResponse($response, $object, $request)
         $attr["options"] = empty($attrOptions) ? array_map(function ($v){
             return ['name'=>$v, 'slug' => $v];
         },$attr["options"]) : $attrOptions;
-        $attributesData[] = array_merge($attr->get_data(), ["label" => $label]);
+        $attributesData[] = array_merge($attr->get_data(), ["label" => $label, "name" => urldecode($key)]);
     }
     $response->data['attributesData'] = $attributesData;
 
@@ -519,12 +519,61 @@ function validateCookieLogin($cookie){
     if(isset($cookie) && strlen($cookie) > 0){
         $userId = wp_validate_auth_cookie($cookie, 'logged_in');
         if($userId == false){
-            return new WP_Error("invalid_login", "Your session has expired. Please logout and login again.", array('status' => 401));
+            return new WP_Error("expired_cookie", "Your session has expired. Please logout and login again.", array('status' => 401));
         }else{
             return $userId;
         }
     }else{
         return new WP_Error("invalid_login", "Cookie is required", array('status' => 401));
     }
+}
+
+function checkWhiteListAccounts ($user_id) {
+    $whiteList = array('vendor@demo.com', 'delivery_demo', 'demo');
+    $user_info = get_userdata($user_id);
+    return in_array($user_info->user_email, $whiteList) || in_array($user_info->user_login, $whiteList);
+}
+
+function upload_image_from_mobile($image, $count, $user_id)
+{
+    require_once(ABSPATH . 'wp-admin/includes/image.php');
+    require_once(ABSPATH . 'wp-admin/includes/file.php');
+    require_once(ABSPATH . 'wp-admin/includes/media.php');
+    $imgdata = $image;
+    $imgdata = trim($imgdata);
+    $imgdata = str_replace('data:image/png;base64,', '', $imgdata);
+    $imgdata = str_replace('data:image/jpg;base64,', '', $imgdata);
+    $imgdata = str_replace('data:image/jpeg;base64,', '', $imgdata);
+    $imgdata = str_replace('data:image/gif;base64,', '', $imgdata);
+    $imgdata = str_replace(' ', '+', $imgdata);
+    $imgdata = base64_decode($imgdata);
+    $f = finfo_open();
+    $mime_type = finfo_buffer($f, $imgdata, FILEINFO_MIME_TYPE);
+    $type_file = explode('/', $mime_type);
+    $avatar = time() . '_' . $count . '.' . $type_file[1];
+
+    $uploaddir = wp_upload_dir();
+    $myDirPath = $uploaddir["path"];
+    $myDirUrl = $uploaddir["url"];
+
+    file_put_contents($uploaddir["path"] . '/' . $avatar, $imgdata);
+
+    $filename = $myDirUrl . '/' . basename($avatar);
+    $wp_filetype = wp_check_filetype(basename($filename), null);
+    $uploadfile = $uploaddir["path"] . '/' . basename($filename);
+
+    $attachment = array(
+        "post_mime_type" => $wp_filetype["type"],
+        "post_title" => preg_replace("/\.[^.]+$/", "", basename($filename)),
+        "post_content" => "",
+        "post_author" => $user_id,
+        "post_status" => "inherit",
+        'guid' => $myDirUrl . '/' . basename($filename),
+    );
+
+    $attachment_id = wp_insert_attachment($attachment, $uploadfile);
+    $attach_data = apply_filters('wp_generate_attachment_metadata', $attachment, $attachment_id, 'create');
+    wp_update_attachment_metadata($attachment_id, $attach_data);
+    return $attachment_id;
 }
 ?>

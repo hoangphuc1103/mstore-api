@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the MStore and FluxStore Mobile App
- * Version: 3.6.6
+ * Version: 3.8.3
  * Author: InspireUI
  * Author URI: https://inspireui.com
  *
@@ -30,13 +30,14 @@ include_once plugin_dir_path(__FILE__) . "controllers/flutter-membership/index.p
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-paytm.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-paystack.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-flutterwave.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-myfatoorah.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-paid-memberships-pro.php";
 include_once plugin_dir_path(__FILE__) . "controllers/listing-rest-api/class.api.fields.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-blog.php";
 
 class MstoreCheckOut
 {
-    public $version = '3.6.6';
+    public $version = '3.8.3';
 
     public function __construct()
     {
@@ -362,7 +363,7 @@ function mstore_init()
 }
 
 add_filter('woocommerce_rest_prepare_product_variation_object', 'custom_woocommerce_rest_prepare_product_variation_object', 20, 3);
-add_filter('woocommerce_rest_prepare_product_object', 'custom_change_product_response', 20, 3);
+add_filter('woocommerce_rest_prepare_product_object', 'flutter_custom_change_product_response', 20, 3);
 add_filter('woocommerce_rest_prepare_product_review', 'custom_product_review', 20, 3);
 add_filter('woocommerce_rest_prepare_product_cat', 'custom_product_category', 20, 3);
 
@@ -396,7 +397,7 @@ function custom_product_review($response, $object, $request)
 }
  
 
-function custom_change_product_response($response, $object, $request)
+function flutter_custom_change_product_response($response, $object, $request)
 {
     return customProductResponse($response, $object, $request);
 }
@@ -559,6 +560,7 @@ function flutter_prepare_checkout()
         }
 
         if (is_plugin_active('woocommerce/woocommerce.php') == true) {
+            //header("Content-Security-Policy: frame-ancestors 'self' *.yourdomain.com");
             global $woocommerce;
             WC()->session->set('refresh_totals', true);
             WC()->cart->empty_cart();
@@ -580,6 +582,10 @@ function flutter_prepare_checkout()
                     }
                 }
 
+                if (isset($product['addons'])) {
+                    $_POST = $product['addons'];
+                }
+                
                 // Check the product variation
                 if (!empty($variationId)) {
                     $productVariable = new WC_Product_Variable($productId);
@@ -592,13 +598,10 @@ function flutter_prepare_checkout()
                     }
                 } else {
                     parseMetaDataForBookingProduct($product);
-                    if (isset($product['addons'])) {
-                        $_POST = $product['addons'];
-                    }
                     $cart_item_data = array();
                     if (is_plugin_active('woo-wallet/woo-wallet.php')) {
                         $wallet_product = get_wallet_rechargeable_product();
-                        if ($wallet_product->id == $productId) {
+                        if ($wallet_product->get_id() == $productId) {
                             $cart_item_data['recharge_amount'] = $product['total'];
                         }
                     }

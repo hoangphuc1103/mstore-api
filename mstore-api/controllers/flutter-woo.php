@@ -211,54 +211,22 @@ class FlutterWoo extends FlutterBaseController
                 }
 			),
 		));
-    }
 
-    protected function upload_image_from_mobile($image, $count, $user_id)
-    {
-        require_once ABSPATH . "wp-admin" . "/includes/file.php";
-        require_once ABSPATH . "wp-admin" . "/includes/image.php";
-        $imgdata = $image;
-        $imgdata = trim($imgdata);
-        $imgdata = str_replace("data:image/png;base64,", "", $imgdata);
-        $imgdata = str_replace("data:image/jpg;base64,", "", $imgdata);
-        $imgdata = str_replace("data:image/jpeg;base64,", "", $imgdata);
-        $imgdata = str_replace("data:image/gif;base64,", "", $imgdata);
-        $imgdata = str_replace(" ", "+", $imgdata);
-        $imgdata = base64_decode($imgdata);
-        $f = finfo_open();
-        $mime_type = finfo_buffer($f, $imgdata, FILEINFO_MIME_TYPE);
-        $type_file = explode("/", $mime_type);
-        $avatar = time() . "_" . $count . "." . $type_file[1];
-
-        $uploaddir = wp_upload_dir();
-        $myDirPath = $uploaddir["path"];
-        $myDirUrl = $uploaddir["url"];
-
-        file_put_contents($uploaddir["path"] . "/" . $avatar, $imgdata);
-
-        $filename = $myDirUrl . "/" . basename($avatar);
-        $wp_filetype = wp_check_filetype(basename($filename), null);
-        $uploadfile = $uploaddir["path"] . "/" . basename($filename);
-
-        $attachment = [
-            "post_mime_type" => $wp_filetype["type"],
-            "post_title" => preg_replace("/\.[^.]+$/", "", basename($filename)),
-            "post_content" => "",
-            "post_author" => $user_id,
-            "post_status" => "inherit",
-            "guid" => $myDirUrl . "/" . basename($filename),
-        ];
-
-        $attachment_id = wp_insert_attachment($attachment, $uploadfile);
-        $attach_data = apply_filters(
-            "wp_generate_attachment_metadata",
-            $attachment,
-            $attachment_id,
-            "create"
-        );
-        // $attach_data = wp_generate_attachment_metadata($attachment_id, $uploadfile);
-        wp_update_attachment_metadata($attachment_id, $attach_data);
-        return $attachment_id;
+        register_rest_route( $this->namespace,  '/products'. '/(?P<id>[\d]+)'.'/rating_counts', array(
+            'args' => array(
+                'id' => array(
+                    'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                    'type' => 'integer',
+                ),
+            ),
+			array(
+				'methods' => "GET",
+				'callback' => array( $this, 'get_product_rating_counts' ),
+				'permission_callback' => function () {
+                    return parent::checkApiPermission();
+                }
+			),
+		));
     }
 
     function get_data_from_scanner($request){
@@ -271,7 +239,7 @@ class FlutterWoo extends FlutterBaseController
 				if($type == 'product'){
 					$controller = new CUSTOM_WC_REST_Products_Controller();
             		$req = new WP_REST_Request('GET');
-            		$params = array('status' =>'published', 'include' => [$data]);
+            		$params = array('status' =>'published', 'include' => [$data], 'page'=>1, 'per_page'=>10);
                     $req->set_query_params($params);
             		$response = $controller->get_items($req);
             		return array(
@@ -393,13 +361,14 @@ class FlutterWoo extends FlutterBaseController
     {
         if (isset($request['url'])) {
             $url = $request['url'];
+            $langs = ["en", "ar", "vi"];
+			foreach( $langs as $lang ) {
+				$url = str_replace("/". $lang,"",$url);
+			 }
             $product_id = url_to_postid($url);
-
-            $product = wc_get_product($product_id);
-
             $controller = new CUSTOM_WC_REST_Products_Controller();
             $req = new WP_REST_Request('GET');
-            $params = array('status' => 'published', 'include' => [$product_id]);
+            $params = array('status' => 'published', 'include[0]' => $product_id, 'page'=>1, 'per_page'=>10, 'lang'=>'en');
             $req->set_query_params($params);
 
             $response = $controller->get_items($req);
@@ -887,10 +856,6 @@ class FlutterWoo extends FlutterBaseController
         if (isset($request["token"])) {
             $cookie = urldecode(base64_decode($request["token"]));
         }
-        if (!isset($cookie)) {
-            return parent::sendError("invalid_login", "You must include a 'cookie' var in your request.", 401);
-        }
-
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
             return $user_id;
@@ -1030,6 +995,21 @@ class FlutterWoo extends FlutterBaseController
             WC()->customer->set_shipping_country($shipping["country"]);
         }
 
+        $billing = $body["billing"];
+        if (isset($billing)) {
+            WC()->customer->set_billing_first_name($billing["first_name"]);
+            WC()->customer->set_billing_last_name($billing["last_name"]);
+            WC()->customer->set_billing_company($billing["company"]);
+            WC()->customer->set_billing_address_1($billing["address_1"]);
+            WC()->customer->set_billing_address_2($billing["address_2"]);
+            WC()->customer->set_billing_city($billing["city"]);
+            WC()->customer->set_billing_state($billing["state"]);
+            WC()->customer->set_billing_postcode($billing["postcode"]);
+            WC()->customer->set_billing_country($billing["country"]);
+            WC()->customer->set_billing_email($billing["email"]);
+            WC()->customer->set_billing_phone($billing["phone"]);
+        }
+
         $error = $this->add_items_to_cart($body['line_items']);
         if (is_string($error)) {
             return parent::sendError("invalid_item", $error, 400);
@@ -1080,10 +1060,6 @@ class FlutterWoo extends FlutterBaseController
         if (isset($request["token"])) {
             $cookie = urldecode(base64_decode($request["token"]));
         }
-        if (!isset($cookie)) {
-            return parent::sendError("invalid_login", "You must include a 'cookie' var in your request.", 401);
-        }
-
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
             return $user_id;
@@ -1111,9 +1087,6 @@ class FlutterWoo extends FlutterBaseController
 
         $order_id = $body["order_id"];
         $cookie = $body["cookie"];
-        if (!isset($cookie)) {
-            return parent::sendError("invalid_login", "You must include a 'cookie' var in your request.", 401);
-        }
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
             return $user_id;
@@ -1170,7 +1143,7 @@ class FlutterWoo extends FlutterBaseController
                 $img_arr = array();
 				$user_id = get_comment($comment_id)->user_id;
                 foreach($images as $image){
-                    $img_id = $this->upload_image_from_mobile($image, $count ,$user_id);
+                    $img_id = upload_image_from_mobile($image, $count ,$user_id);
 					$img_arr[] = $img_id;
 					$count++;
                 }
@@ -1186,11 +1159,10 @@ class FlutterWoo extends FlutterBaseController
             if (isset($request['id'])) {
                 $helper = new FlutterWCFMHelper();
                 return $helper->generate_vendor_delivery_time_checkout_field($request['id']);
+            }else{
+                return parent::sendError("required_vendor_id", "id is required", 400);
             }
-        }
-
-        if (is_plugin_active('order-delivery-date/order_delivery_date.php')) {
-
+        }else if (is_plugin_active('order-delivery-date/order_delivery_date.php')) {
             $number_of_dates = get_option('orddd_number_of_dates');
             $options = ORDDD_Functions::orddd_get_dates_for_dropdown($number_of_dates);
             $arr = array();
@@ -1203,6 +1175,8 @@ class FlutterWoo extends FlutterBaseController
                 $arr[] = $date;
             }
             return $arr;
+        }else{
+            return parent::sendError("invalid_plugin", "You need to install Order Delivery Date for WooCommerce or WOOCOMMERCE FRONTEND MANAGER - DELIVERY plugin to use this api", 404);
         }
     }
 
@@ -1282,6 +1256,18 @@ class FlutterWoo extends FlutterBaseController
 		$helper = new FlutterBlogHelper();
         return $helper->create_comment($request);
 	}
+
+    function get_product_rating_counts($request){
+        $params = $request->get_url_params();
+		$productId = sanitize_text_field($params['id']);
+        $product = wc_get_product( $productId );
+        $rating_1 = $product->get_rating_count(1);
+        $rating_2 = $product->get_rating_count(2);
+        $rating_3 = $product->get_rating_count(3);
+        $rating_4 = $product->get_rating_count(4);
+        $rating_5 = $product->get_rating_count(5);
+        return ["rating_1" => $rating_1, "rating_2" => $rating_2, "rating_3" => $rating_3, "rating_4" => $rating_4, "rating_5" => $rating_5];
+    }
 }
 
 new FlutterWoo;

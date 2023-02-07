@@ -21,54 +21,6 @@ class ProductManagementHelper
         return wc_get_product($id);
     }
 
-    protected function upload_image_from_mobile($image, $count, $user_id)
-    {
-        require_once ABSPATH . "wp-admin" . "/includes/file.php";
-        require_once ABSPATH . "wp-admin" . "/includes/image.php";
-        $imgdata = $image;
-        $imgdata = trim($imgdata);
-        $imgdata = str_replace("data:image/png;base64,", "", $imgdata);
-        $imgdata = str_replace("data:image/jpg;base64,", "", $imgdata);
-        $imgdata = str_replace("data:image/jpeg;base64,", "", $imgdata);
-        $imgdata = str_replace("data:image/gif;base64,", "", $imgdata);
-        $imgdata = str_replace(" ", "+", $imgdata);
-        $imgdata = base64_decode($imgdata);
-        $f = finfo_open();
-        $mime_type = finfo_buffer($f, $imgdata, FILEINFO_MIME_TYPE);
-        $type_file = explode("/", $mime_type);
-        $avatar = time() . "_" . $count . "." . $type_file[1];
-
-        $uploaddir = wp_upload_dir();
-        $myDirPath = $uploaddir["path"];
-        $myDirUrl = $uploaddir["url"];
-
-        file_put_contents($uploaddir["path"] . "/" . $avatar, $imgdata);
-
-        $filename = $myDirUrl . "/" . basename($avatar);
-        $wp_filetype = wp_check_filetype(basename($filename), null);
-        $uploadfile = $uploaddir["path"] . "/" . basename($filename);
-
-        $attachment = [
-            "post_mime_type" => $wp_filetype["type"],
-            "post_title" => preg_replace("/\.[^.]+$/", "", basename($filename)),
-            "post_content" => "",
-            "post_author" => $user_id,
-            "post_status" => "inherit",
-            "guid" => $myDirUrl . "/" . basename($filename),
-        ];
-
-        $attachment_id = wp_insert_attachment($attachment, $uploadfile);
-        $attach_data = apply_filters(
-            "wp_generate_attachment_metadata",
-            $attachment,
-            $attachment_id,
-            "create"
-        );
-        $attach_data = wp_generate_attachment_metadata($attachment_id, $uploadfile);
-        wp_update_attachment_metadata($attachment_id, $attach_data);
-        return $attachment_id;
-    }
-
     protected function find_image_id($image)
     {
         $image_id = attachment_url_to_postid(stripslashes($image));
@@ -170,7 +122,12 @@ class ProductManagementHelper
             $search =  sanitize_text_field($request["search"]);
             $search = "%$search%";
 
-            $sql = "SELECT DISTINCT `$table_name`.ID, `$table_name`.* FROM `$table_name` LEFT JOIN `$postmeta_table` ON {$table_name}.ID = {$postmeta_table}.post_id WHERE `$table_name`.`post_author` = $vendor_id AND `$table_name`.`post_type` = 'product' AND `$table_name`.`post_status` != 'trash'";
+            if (isset($is_admin) && $is_admin == true) {
+                $sql = "SELECT DISTINCT `$table_name`.ID, `$table_name`.* FROM `$table_name` LEFT JOIN `$postmeta_table` ON {$table_name}.ID = {$postmeta_table}.post_id WHERE `$table_name`.`post_type` = 'product' AND `$table_name`.`post_status` != 'trash'";
+            } else {
+                $sql = "SELECT DISTINCT `$table_name`.ID, `$table_name`.* FROM `$table_name` LEFT JOIN `$postmeta_table` ON {$table_name}.ID = {$postmeta_table}.post_id WHERE `$table_name`.`post_author` = $vendor_id AND `$table_name`.`post_type` = 'product' AND `$table_name`.`post_status` != 'trash'";
+            }
+
             $sql .= " AND (`$table_name`.`post_content` LIKE '$search' OR `$table_name`.`post_title` LIKE '$search' OR `$table_name`.`post_excerpt` LIKE '$search' OR (`$postmeta_table`.`meta_key` = '_sku' AND `$postmeta_table`.`meta_value` LIKE '$search'))";
         }
         $sql .= " ORDER BY `ID` DESC LIMIT $limit OFFSET $page";
@@ -285,7 +242,9 @@ class ProductManagementHelper
                         $attr_data['slug'] = $v;
                         $meta = get_post_meta($variation->ID, 'attribute_'.$k, true);
                         $term = get_term_by('slug', $meta, $k);
-                        $attr_data['attribute_name'] = $term->name;
+                        if($term){
+                            $attr_data['attribute_name'] = $term->name;
+                        }
                         $attr_arr[]=$attr_data;
                     }
                     $variation_data['attributes_arr'] = $attr_arr;
@@ -376,7 +335,20 @@ class ProductManagementHelper
 			}
 					
 			$product = wc_get_product($post_id);
+			if ($product->get_type() !== $type) {
+					
+                // Get the correct product classname from the new product type
+                $product_classname = WC_Product_Factory::get_product_classname(
+                    $product->get_id(),
+                    $type
+                );
+
 			
+                // Get the new product object from the correct classname
+                $product = new $product_classname($product->get_id());
+                $product->save();
+            }
+
 			if (isset($featured_image)) {
 			
                 if (!empty($featured_image)) {
@@ -389,7 +361,7 @@ class ProductManagementHelper
 					
                         $product->set_image_id($featured_image_id);
                     } else {
-                        $featured_image_id = $this->upload_image_from_mobile(
+                        $featured_image_id = upload_image_from_mobile(
                             $featured_image,
                             $count,
                             $user_id
@@ -414,7 +386,7 @@ class ProductManagementHelper
                             $img_id = $this->find_image_id($p_img);
                             array_push($img_array, $img_id);
                         } else {
-                            $img_id = $this->upload_image_from_mobile(
+                            $img_id = upload_image_from_mobile(
                                 $p_img,
                                 $count,
                                 $user_id
@@ -426,21 +398,6 @@ class ProductManagementHelper
                 }
                 $product->set_gallery_image_ids($img_array);
             }
-		
-            if ($product->get_type() !== $type) {
-					
-                // Get the correct product classname from the new product type
-                $product_classname = WC_Product_Factory::get_product_classname(
-                    $product->get_id(),
-                    $type
-                );
-
-			
-                // Get the new product object from the correct classname
-                $product = new $product_classname($product->get_id());
-                $product->save();
-            }
-
           
             if (isset($product) && !is_wp_error($product)) {
                 $product->set_name($name);
@@ -627,7 +584,7 @@ class ProductManagementHelper
                 foreach (array_filter($p["gallery_image_ids"]) as $img) {
                     $image = wp_get_attachment_image_src($img, "full");
 
-                    if (!is_null($image[0])) {
+                    if (is_array($image) && count($image) > 0) {
                         $image_arr[] = $image[0];
                     }
                 }
