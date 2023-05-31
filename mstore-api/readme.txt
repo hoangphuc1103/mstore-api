@@ -3,7 +3,7 @@ Contributors:      InspireUI Ltd
 Tags:              mstore, fluxstore, react-native, flutter, inspireui, ios, android
 Requires at least: 4.4
 Tested up to:      6.0.0
-Stable tag:        3.8.3
+Stable tag:        3.9.3
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -43,6 +43,37 @@ Faster- Smoother- Closer.
 1. Click Install.
 
 == Changelog ==
+= 3.9.3 =
+  * Fix security issue for listing api
+
+= 3.9.2 =
+  * Fix security issue for cart api
+
+= 3.9.1 =
+  * Fix security issue for coupon api
+
+= 3.9.0 =
+  * Fix to push notification to seller when order created
+
+= 3.8.9 =
+  * Add Stripe api
+
+= 3.8.8 =
+  * Fix shop orders api
+  
+= 3.8.7 =
+  * Support Wholesale api
+
+= 3.8.6 =
+  * Fix nearby for mylisting
+
+= 3.8.5 =
+  * Get video products api
+  * Support Midtrans payment
+
+= 3.8.4 =
+  * Show bank info after order completed
+
 = 3.8.3 =
   * Fix product variant issues
 

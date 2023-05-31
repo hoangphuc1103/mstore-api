@@ -26,6 +26,18 @@ class FlutterWoo extends FlutterBaseController
     public function __construct()
     {
         add_action('rest_api_init', array($this, 'register_flutter_woo_routes'));
+        add_filter('wp_rest_cache/allowed_endpoints', array($this, 'wprc_add_flutter_endpoints'));
+    }
+
+    /**
+     * Register the flutter caching endpoints so they will be cached.
+     */
+    function wprc_add_flutter_endpoints($allowed_endpoints)
+    {
+        if (!isset($allowed_endpoints[$this->namespace])) {
+            $allowed_endpoints[$this->namespace][] = 'products/video';
+        }
+        return $allowed_endpoints;
     }
 
     public function register_flutter_woo_routes()
@@ -227,6 +239,16 @@ class FlutterWoo extends FlutterBaseController
                 }
 			),
 		));
+
+        register_rest_route($this->namespace, '/products/video', array(
+            array(
+                'methods' => "GET",
+                'callback' => array($this, 'get_products_video'),
+                'permission_callback' => function () {
+                    return parent::checkApiPermission();
+                }
+            ),
+        ));
     }
 
     function get_data_from_scanner($request){
@@ -368,7 +390,8 @@ class FlutterWoo extends FlutterBaseController
             $product_id = url_to_postid($url);
             $controller = new CUSTOM_WC_REST_Products_Controller();
             $req = new WP_REST_Request('GET');
-            $params = array('status' => 'published', 'include[0]' => $product_id, 'page'=>1, 'per_page'=>10, 'lang'=>'en');
+            //$params = array('status' => 'published', 'include[0]' => $product_id, 'page'=>1, 'per_page'=>10, 'lang'=>'en');
+            $params = array('status' => 'published', 'include' => [$product_id], 'page'=>1, 'per_page'=>10, 'lang'=>'en');
             $req->set_query_params($params);
 
             $response = $controller->get_items($req);
@@ -459,18 +482,18 @@ class FlutterWoo extends FlutterBaseController
                 }
             }
 
-            if (!$product_data->is_purchasable()) {
-                $message = __('Sorry, this product cannot be purchased.', 'woocommerce');
-                /**
-                 * Filters message about product unable to be purchased.
-                 *
-                 * @param string $message Message.
-                 * @param WC_Product $product_data Product data.
-                 * @since 3.8.0
-                 */
-                $message = apply_filters('woocommerce_cart_product_cannot_be_purchased_message', $message, $product_data);
-                throw new Exception($message);
-            }
+            // if (!$product_data->is_purchasable()) {
+            //     $message = __('Sorry, this product cannot be purchased.', 'woocommerce');
+            //     /**
+            //      * Filters message about product unable to be purchased.
+            //      *
+            //      * @param string $message Message.
+            //      * @param WC_Product $product_data Product data.
+            //      * @since 3.8.0
+            //      */
+            //     $message = apply_filters('woocommerce_cart_product_cannot_be_purchased_message', $message, $product_data);
+            //     throw new Exception($message);
+            // }
 
             // Stock check - only check if we're managing stock and backorders are not allowed.
             if (!$product_data->is_in_stock()) {
@@ -731,14 +754,15 @@ class FlutterWoo extends FlutterBaseController
             return parent::sendError("invalid_item", $error, 400);
         }
 
-        if (isset($body["customer_id"]) && $body["customer_id"] != null) {
-            $userId = $body["customer_id"];
-            $user = get_userdata($userId);
-            if ($user) {
-                wp_set_current_user($userId, $user->user_login);
-                wp_set_auth_cookie($userId);
-                WC()->customer = new WC_Customer($userId, true);
+        $cookie = $request->get_header("User-Cookie");
+        if (isset($cookie) && $cookie != null) {
+            $user_id = validateCookieLogin($cookie);
+            if (is_wp_error($user_id)) {
+                return $user_id;
             }
+            wp_set_current_user($user_id);
+            wp_set_auth_cookie($user_id);
+            WC()->customer = new WC_Customer($user_id, true);
         }
 
         $coupon_code = $body["coupon_code"];
@@ -875,21 +899,23 @@ class FlutterWoo extends FlutterBaseController
         // Loop through cart items and get cart items details
         $product_controller = new WC_REST_Products_Controller();
         $product_variation_controller = new WC_REST_Product_Variations_Controller();
-        foreach ($cart_items as $cart_item_key => $cart_item) {
-            $product_id = $cart_item['product_id'];
-            $variation_id = $cart_item['variation_id'];
-            $quantity = $cart_item['quantity'];
-
-            $product = wc_get_product($product_id);
-            $product_data = $product_controller->prepare_object_for_response($product, $request)->get_data();
-
-            if ($variation_id != 0) {
-                $variation = new WC_Product_Variation($variation_id);
-                $variation_data = $product_variation_controller->prepare_object_for_response($variation, $request)->get_data();
-            } else {
-                $variation_data = null;
+        if(is_array($cart_items)){
+            foreach ($cart_items as $cart_item_key => $cart_item) {
+                $product_id = $cart_item['product_id'];
+                $variation_id = $cart_item['variation_id'];
+                $quantity = $cart_item['quantity'];
+    
+                $product = wc_get_product($product_id);
+                $product_data = $product_controller->prepare_object_for_response($product, $request)->get_data();
+    
+                if ($variation_id != 0) {
+                    $variation = new WC_Product_Variation($variation_id);
+                    $variation_data = $product_variation_controller->prepare_object_for_response($variation, $request)->get_data();
+                } else {
+                    $variation_data = null;
+                }
+                $items[] = ["product" => $product_data, "quantity" => $quantity, "variation" => $variation_data];
             }
-            $items[] = ["product" => $product_data, "quantity" => $quantity, "variation" => $variation_data];
         }
 
         return $items;
@@ -905,7 +931,15 @@ class FlutterWoo extends FlutterBaseController
             include_once WC_ABSPATH . 'includes/wc-cart-functions.php';
         }
 
-        $user_id = $body["customer_id"];
+        $cookie = $request->get_header("User-Cookie");
+        if (isset($cookie) && $cookie != null) {
+            $user_id = validateCookieLogin($cookie);
+            if (is_wp_error($user_id)) {
+                return $user_id;
+            }
+        }else{
+            return parent::sendError("cookie_required","User-Cookie is required", 400);
+        }
 
         $session_expiring = time() + intval(apply_filters('wc_session_expiring', 60 * 60 * 47)); // 47 Hours.
         $session_expiration = time() + intval(apply_filters('wc_session_expiration', 60 * 60 * 48)); // 48 Hours.
@@ -1026,7 +1060,7 @@ class FlutterWoo extends FlutterBaseController
         }
 
         $results = [];
-        if (wc_tax_enabled() && !WC()->cart->display_prices_including_tax()) {
+        if (wc_tax_enabled()) {
             $taxable_address = WC()->customer->get_taxable_address();
             $estimated_text = '';
 
@@ -1042,12 +1076,11 @@ class FlutterWoo extends FlutterBaseController
             } else {
                 $results[] = ["label" => WC()->countries->tax_or_vat() . $estimated_text, "value" => WC()->cart->get_taxes_total()];
             }
-        }
-        if ('yes' === get_option('woocommerce_prices_include_tax')) {
-            return ["items" => [], "taxes_total" => "0"];
-        } else {
-            return ["items" => $results, "taxes_total" => count($results) > 0 ? WC()->cart->get_taxes_total() : "0"];
-        }
+			
+			return ["items" => $results, "taxes_total" => count($results) > 0 ? WC()->cart->get_taxes_total() : "0", "is_including_tax" => WC()->cart->display_prices_including_tax()];
+        }else{
+			return ["items" => [], "taxes_total" => "0", "is_including_tax" => false];
+		}
     }
 
     public function get_points($request)
@@ -1070,7 +1103,7 @@ class FlutterWoo extends FlutterBaseController
             $max_product_point_discount = get_option('wc_points_rewards_max_discount');
             $max_point_discount = get_option('wc_points_rewards_cart_max_discount');
 
-            return ["points" => $myPoints, "cart_price_rate" => floatval($monetary_value), "cart_points_rate" => intval($points), "max_point_discount" => intval($max_point_discount), "max_product_point_discount" => intval($max_product_point_discount)];
+            return ["points" => $myPoints, "cart_price_rate" => floatval($monetary_value), "cart_points_rate" => intval($points), "max_point_discount" => $max_point_discount, "max_product_point_discount" => $max_product_point_discount];
         } else {
             return parent::sendError("disabled_redemption", "Disabled partial redemption", 400);
         }
@@ -1268,6 +1301,41 @@ class FlutterWoo extends FlutterBaseController
         $rating_5 = $product->get_rating_count(5);
         return ["rating_1" => $rating_1, "rating_2" => $rating_2, "rating_3" => $rating_3, "rating_4" => $rating_4, "rating_5" => $rating_5];
     }
+
+    function get_products_video($request){
+        global $wpdb;
+        $table_name = $wpdb->prefix . "postmeta";
+        $page = 1;
+        $per_page = 10;
+
+        if (isset($request['page'])) {
+            $page = sanitize_text_field($request['page']);
+            if(!is_numeric($page)){
+                $page = 1;
+            }
+        }
+        if (isset($request['per_page'])) {
+            $per_page = sanitize_text_field($request['per_page']);
+            if(!is_numeric($per_page)){
+                $per_page = 10;
+            }
+        }
+        $page = ($page - 1) * $per_page;
+        $items = $wpdb->get_results("SELECT * FROM $table_name WHERE meta_key='_mstore_video_url' AND meta_value IS NOT NULL AND meta_value <> '' LIMIT $per_page OFFSET $page");
+
+        if(count($items) > 0){
+            $controller = new CUSTOM_WC_REST_Products_Controller();
+            $req = new WP_REST_Request('GET');
+            $params = array('include' => array_map(function($item){
+                return $item->post_id;
+            }, $items));
+            $req->set_query_params($params);
+            $response = $controller->get_items($req);
+            return $response->get_data();
+        }else{
+            return [];
+        }
+	}
 }
 
 new FlutterWoo;

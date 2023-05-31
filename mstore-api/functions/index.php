@@ -112,9 +112,9 @@ function sendNotificationToUser($userId, $orderId, $previous_status, $next_statu
     $message = str_replace("{{nextStatus}}", $next_status_label, $message);
 
     if (isset($deviceToken) && $deviceToken != false) {
-        pushNotification($title, $message, $deviceToken);
+        _pushNotificationFirebase($userId,$title, $message, $deviceToken);
     }
-    one_signal_push_notification($title,$message,array($userId));
+    _pushNotificationOneSignal($userId, $title,$message);
 }
 
 function trackOrderStatusChanged($id, $previous_status, $next_status)
@@ -141,15 +141,13 @@ function sendNewOrderNotificationToDelivery($order_id, $status)
             $sql .= " AND delivery_status = 'pending'";
             $result = $wpdb->get_results($sql);
 
-            $user_ids = array();
             foreach ($result as $item) {
-                $user_ids[]=$item->delivery_boy;
                 $deviceToken = get_user_meta($item->delivery_boy, 'mstore_delivery_device_token', true);
                 if (isset($deviceToken) && $deviceToken != false) {
-                    pushNotification($title, $message, $deviceToken);
+                    _pushNotificationFirebase($item->delivery_boy,$title, $message, $deviceToken);
                 }
+                _pushNotificationOneSignal($title,$message, $item->delivery_boy);
             }
-            one_signal_push_notification($title,$message, $user_ids);
         }
 
     }
@@ -175,7 +173,7 @@ function sendNewOrderNotificationToDelivery($order_id, $status)
             maybe_create_table($table_name, $sql);
             $deviceToken = get_user_meta($driver_id, 'mstore_delivery_device_token', true);
             if (isset($deviceToken) && $deviceToken != false) {
-                pushNotification($title, $message, $deviceToken);
+                _pushNotificationFirebase($driver_id,$title, $message, $deviceToken);
                 $wpdb->insert($table_name, array(
                     'message' => $message,
                     'order_id' => $order_id,
@@ -201,16 +199,16 @@ function sendNewOrderNotificationToVendor($order_seller_id, $order_id)
     $message = str_replace("{{name}}", $user->display_name, $message);
     $deviceToken = get_user_meta($order_seller_id, 'mstore_device_token', true);
     if (isset($deviceToken) && $deviceToken != false) {
-        pushNotification($title, $message, $deviceToken);
+        _pushNotificationFirebase($order_seller_id,$title, $message, $deviceToken);
     }
     $managerDeviceToken = get_user_meta($order_seller_id, 'mstore_manager_device_token', true);
     if (isset($managerDeviceToken) && $managerDeviceToken != false) {
-        pushNotification($title, $message, $managerDeviceToken);
+        _pushNotificationFirebase($order_seller_id,$title, $message, $managerDeviceToken);
         if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')) {
             wcfm_message_on_new_order($order_id);
         }
     }
-    one_signal_push_notification($title, $message, array($order_seller_id));
+    _pushNotificationOneSignal($order_seller_id,$title, $message);
 }
 
 function wcfm_message_on_new_order($order_id)
@@ -263,49 +261,13 @@ function wcfm_message_on_new_order($order_id)
 
 function trackNewOrder($order_id)
 {
-    $order = wc_get_order($order_id);
-    if (is_plugin_active('dokan-lite/dokan.php')) {
-        if (dokan_is_order_already_exists($order_id)) {
-            return;
-        }
-
-        $order_seller_id = dokan_get_seller_id_by_order($order_id);
-        if (isset($order_seller_id) && $order_seller_id != false) {
-            sendNewOrderNotificationToVendor($order_seller_id, $order_id);
-        }
+    $seller_ids = getSellerIdsByOrderId($order_id);
+    if (empty($seller_ids)) {
+        return;
     }
-
-    if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')) {
-        $processed_vendors = array();
-        if (function_exists('wcfm_get_vendor_store_by_post')) {
-            $order = wc_get_order($order_id);
-            if (is_a($order, 'WC_Order')) {
-                $items = $order->get_items('line_item');
-                if (!empty($items)) {
-                    foreach ($items as $order_item_id => $item) {
-                        $line_item = new WC_Order_Item_Product($item);
-                        $product = $line_item->get_product();
-                        $product_id = $line_item->get_product_id();
-                        $vendor_id = wcfm_get_vendor_id_by_post($product_id);
-
-                        if (!$vendor_id) continue;
-                        if (in_array($vendor_id, $processed_vendors)) continue;
-
-                        $store_name = wcfm_get_vendor_store($vendor_id);
-                        if ($store_name) {
-                            $processed_vendors[$vendor_id] = $vendor_id;
-                        }
-                    }
-                }
-            }
-        }
-        if (!empty($processed_vendors)) {
-            foreach ($processed_vendors as $vendor_id) {
-                sendNewOrderNotificationToVendor($vendor_id, $order_id);
-            }
-        }
+    foreach ($seller_ids as $vendor_id) {
+        sendNewOrderNotificationToVendor($vendor_id, $order_id);
     }
-
 }
 
 function getAddOns($categories)
@@ -463,18 +425,20 @@ function customProductResponse($response, $object, $request)
     $attributes = $product->get_attributes();
     $attributesData = [];
     foreach ($attributes as $key => $attr) {
-        $check = $attr->is_taxonomy();
-        if ($check) {
-            $taxonomy = $attr->get_taxonomy_object();
-            $label = $taxonomy->attribute_label;
-        } else {
-            $label = $attr->get_name();
+        if(!is_string($attr)){
+            $check = $attr->is_taxonomy();
+            if ($check) {
+                $taxonomy = $attr->get_taxonomy_object();
+                $label = $taxonomy->attribute_label;
+            } else {
+                $label = $attr->get_name();
+            }
+            $attrOptions = wc_get_product_terms($response->data['id'], $attr["name"]);
+            $attr["options"] = empty($attrOptions) ? array_map(function ($v){
+                return ['name'=>$v, 'slug' => $v];
+            },$attr["options"]) : $attrOptions;
+            $attributesData[] = array_merge($attr->get_data(), ["label" => $label, "name" => urldecode($key)]);
         }
-        $attrOptions = wc_get_product_terms($response->data['id'], $attr["name"]);
-        $attr["options"] = empty($attrOptions) ? array_map(function ($v){
-            return ['name'=>$v, 'slug' => $v];
-        },$attr["options"]) : $attrOptions;
-        $attributesData[] = array_merge($attr->get_data(), ["label" => $label, "name" => urldecode($key)]);
     }
     $response->data['attributesData'] = $attributesData;
 
@@ -502,6 +466,8 @@ function customProductResponse($response, $object, $request)
         }
     }
 
+    $blackListKeys = ['yoast_head','yoast_head_json','_links'];
+    $response->data = array_diff_key($response->data,array_flip($blackListKeys));
     return $response;
 }
 
@@ -532,6 +498,13 @@ function checkWhiteListAccounts ($user_id) {
     $whiteList = array('vendor@demo.com', 'delivery_demo', 'demo');
     $user_info = get_userdata($user_id);
     return in_array($user_info->user_email, $whiteList) || in_array($user_info->user_login, $whiteList);
+}
+
+function checkIsAdmin($user_id){
+    $user = get_userdata( $user_id );
+    $user_roles = $user->roles;
+    $is_admin = in_array( 'administrator', $user_roles, true );
+    return $is_admin;
 }
 
 function upload_image_from_mobile($image, $count, $user_id)
@@ -573,7 +546,91 @@ function upload_image_from_mobile($image, $count, $user_id)
 
     $attachment_id = wp_insert_attachment($attachment, $uploadfile);
     $attach_data = apply_filters('wp_generate_attachment_metadata', $attachment, $attachment_id, 'create');
+    // $attach_data = wp_generate_attachment_metadata($attachment_id, $uploadfile);
     wp_update_attachment_metadata($attachment_id, $attach_data);
     return $attachment_id;
+}
+
+function getSellerIdsByOrderId($order_id){
+    $seller_ids = [];
+    if (is_plugin_active('dokan-lite/dokan.php')) {
+        $order_seller_id = dokan_get_seller_id_by_order($order_id);
+        if (isset($order_seller_id) && $order_seller_id != false) {
+            $seller_ids[] = $order_seller_id;
+        }
+    }
+
+    if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')) {
+        if (function_exists('wcfm_get_vendor_store_by_post')) {
+            $order = wc_get_order($order_id);
+            if (is_a($order, 'WC_Order')) {
+                $items = $order->get_items('line_item');
+                if (!empty($items)) {
+                    foreach ($items as $order_item_id => $item) {
+                        $line_item = new WC_Order_Item_Product($item);
+                        $product = $line_item->get_product();
+                        $product_id = $line_item->get_product_id();
+                        $vendor_id = wcfm_get_vendor_id_by_post($product_id);
+                        if (!$vendor_id) continue;
+                        if (in_array($vendor_id, $seller_ids)) continue;
+
+                        $store_name = wcfm_get_vendor_store($vendor_id);
+                        if ($store_name) {
+                            $seller_ids[] = $vendor_id;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return $seller_ids;
+}
+
+function sendNotificationForOrderStatusUpdated($order_id, $status)
+{
+    $seller_ids = getSellerIdsByOrderId($order_id);
+    if (empty($seller_ids)) {
+        return;
+    }
+
+    $title = "Update Order";
+
+    foreach ($seller_ids as $seller_id) {
+        $user = get_userdata($seller_id);
+        if ($status == 'refund-req') {
+            $message = "Hi {{name}}, The order #{{order}} is refunded.";
+        }else if($status == 'cancelled'){
+            $message = "Hi {{name}}, The order #{{order}} is cancelled.";
+        }else{
+            $message = "Hi {{name}}, The order #{{order}} is updated.";
+        }
+        $message = str_replace("{{name}}", $user->display_name, $message);
+        $message = str_replace("{{order}}", $order_id, $message);
+    
+        $managerDeviceToken = get_user_meta($seller_id, 'mstore_manager_device_token', true);
+        if (isset($managerDeviceToken) && $managerDeviceToken != false) {
+            _pushNotificationFirebase($seller_id, $title, $message, $managerDeviceToken);
+        }
+        _pushNotificationOneSignal($seller_id,$title, $message);
+    }
+}
+
+function _pushNotificationFirebase($user_id, $title, $message, $deviceToken){
+    $is_on = isNotificationEnabled($user_id);
+    if($is_on){
+        pushNotification($title, $message, $deviceToken);
+    }
+}
+
+function _pushNotificationOneSignal($user_id, $title, $message){
+    $is_on = isNotificationEnabled($user_id);
+    if($is_on){
+        one_signal_push_notification($title,$message,array($userId));
+    }
+}
+
+function isNotificationEnabled($user_id){
+    $is_on = get_user_meta($user_id, "mstore_notification_status", true);
+    return  $is_on === "" || $is_on === "on";
 }
 ?>

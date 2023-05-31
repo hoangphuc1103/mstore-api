@@ -157,6 +157,9 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
         }
 
         $response = $this->create_item($request);
+        if(is_wp_error($response)){
+            return $response;
+        }
 		$data = $response->get_data();
 
         // Send the customer invoice email.
@@ -176,6 +179,12 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             $order->add_order_note('Tap payment successful.<br/>Tap ID: '.$params['transaction_id']);
         }
 		
+        //update order type for wholesale
+        if (class_exists('WooCommerceWholeSalePrices')) {
+            global $wc_wholesale_prices;
+            $wc_wholesale_prices->wwp_order->add_order_type_meta_to_wc_orders($data['id']);
+        }
+        
         return  $response;
     }
 

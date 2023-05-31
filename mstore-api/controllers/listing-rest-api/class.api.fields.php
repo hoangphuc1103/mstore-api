@@ -1,4 +1,6 @@
 <?php
+require_once(__DIR__ . '/mylisting-functions.php');
+
 class FlutterTemplate extends WP_REST_Posts_Controller
 {
 
@@ -378,17 +380,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     return true;
                 }
         ));
-
-        register_rest_route('wp/v2', '/add-listing', array(
-            'methods' => 'GET',
-            'callback' => array(
-                $this,
-                'add_listing'
-            ) ,
-            'permission_callback' => function () {
-                return true;
-            }
-        ));
         
         register_rest_route('wp/v2', '/get-nearby-listings', array(
             'methods' => 'GET',
@@ -407,6 +398,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
     public function get_nearby_listings($request){
         $current_lat = $request['lat'];
         $current_long = $request['long'];
+        $search_location = $request['search_location'];
         $radius = 100; //in km
         if(isset($request['radius'])){
             $radius =  $request['radius'];
@@ -441,20 +433,41 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             endforeach;
         }
         if( $this->_isMyListing){
-            $sql = "SELECT p.*, ";
-            $sql .= " (6371 * acos (cos (radians($current_lat)) * cos(radians(t.lat)) * cos(radians(t.lng) - radians($current_long)) + ";
-            $sql .= "sin (radians($current_lat)) * sin(radians(t.lat)))) AS distance FROM (SELECT b.post_id, a.post_status, sum(if(";
-            $sql .= "meta_key = 'geolocation_lat', meta_value, 0)) AS lat, sum(if(meta_key = 'geolocation_long', ";
-            $sql .= "meta_value, 0)) AS lng FROM {$wpdb->prefix}posts a, {$wpdb->prefix}postmeta b WHERE a.id = b.post_id AND (";
-            $sql .= "b.meta_key='geolocation_lat' OR b.meta_key='geolocation_long') AND a.post_status='publish' GROUP BY b.post_id) AS t INNER ";
-            $sql .= "JOIN {$wpdb->prefix}posts as p on (p.ID=t.post_id) HAVING distance < {$radius}";
-            $posts = $wpdb->get_results($sql);
+            $bodyReq = ['proximity_units'=>'km','listing_type'=>'place', 'form_data'=>[
+                'page'=>$offset / $limit,
+                'per_page'=>$limit,
+                'search_keywords'=>'',
+                'proximity'=>$radius,
+                'lat'=>$current_lat,
+                'lng'=>$current_long,
+                'category'=>'',
+                'search_location'=> $search_location ?? '',
+                'region'=>'',
+                'tags'=>'',
+                'sort'=>'nearby'
+                ]
+            ];
+			$posts =  myListingExploreListings($bodyReq);
             $items = (array)($posts);
-            // return $items;
             foreach ($items as $item):
                 $itemdata = $this->prepare_item_for_response($item, $request);
                 $data[] = $this->prepare_response_for_collection($itemdata);
             endforeach;
+
+            // $sql = "SELECT p.*, ";
+            // $sql .= " (6371 * acos (cos (radians($current_lat)) * cos(radians(t.lat)) * cos(radians(t.lng) - radians($current_long)) + ";
+            // $sql .= "sin (radians($current_lat)) * sin(radians(t.lat)))) AS distance FROM (SELECT b.post_id, a.post_status, sum(if(";
+            // $sql .= "meta_key = 'geolocation_lat', meta_value, 0)) AS lat, sum(if(meta_key = 'geolocation_long', ";
+            // $sql .= "meta_value, 0)) AS lng FROM {$wpdb->prefix}posts a, {$wpdb->prefix}postmeta b WHERE a.id = b.post_id AND (";
+            // $sql .= "b.meta_key='geolocation_lat' OR b.meta_key='geolocation_long') AND a.post_status='publish' GROUP BY b.post_id) AS t INNER ";
+            // $sql .= "JOIN {$wpdb->prefix}posts as p on (p.ID=t.post_id) HAVING distance < {$radius}";
+            // $posts = $wpdb->get_results($sql);
+            // $items = (array)($posts);
+            // // return $items;
+            // foreach ($items as $item):
+            //     $itemdata = $this->prepare_item_for_response($item, $request);
+            //     $data[] = $this->prepare_response_for_collection($itemdata);
+            // endforeach;
         }
         if($this->_isListingPro){
             $args = array(
@@ -487,8 +500,8 @@ class FlutterTemplate extends WP_REST_Posts_Controller
     // Listeo theme functions
     public function get_service_slots($object)
     {
-        $data = [];
-        if ($object['_slots_status'] == 'on')
+        $slots = [];
+        if ( isset($object['_slots_status']) && $object['_slots_status'] == 'on')
         {
             $slots = json_decode($object['_slots']);
 
@@ -1040,26 +1053,13 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         public function get_blog_image_feature($object)
         {
             $image_feature = wp_get_attachment_image_src($object['featured_media']);
-            return $image_feature[0];
+            return is_array($image_feature) && count($image_feature) > 0 ? $image_feature[0] : null;
         }
 
         public function get_blog_author_name($object)
         {
             $user = get_userdata($object['author']);
             return $user->display_name;
-        }
-
-        //-----------------//
-        
-
-        public function add_listing($request)
-        {
-            $id = $request['id'];
-            wp_clear_auth_cookie();
-            wp_set_current_user($id);
-            wp_set_auth_cookie($id, true);
-            header("Location: " . $request['url']);
-            die();
         }
 
         /* --- - MyListing - ---*/
@@ -1086,6 +1086,22 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
             return new WP_REST_Response($data, 200);
 
+        }
+
+        function _rest_get_address_lat_lng_data($object)
+        {
+            //get the Post Id
+            $listing_id = $object['id'];
+            global $wpdb;
+            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = '$listing_id'"; //wp_it_job_details is job table
+            $results = $wpdb->get_row($sql);
+            $data = [];
+            if ($results) {
+                $data['address'] = $results->address;
+                $data['lat'] = $results->lat;
+                $data['lng'] = $results->lng;
+            }
+            return $data; 
         }
 
         /* --- - ListingPro - ---*/
@@ -1183,7 +1199,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $commentKey = '_case27_post_rating';
             }
 
-            $post_id = $object[0];
+            $post_id = isset($object[0]) ? $object[0] : '';
             $decimals = 1;
 
             if (empty($post_id))
@@ -1521,6 +1537,15 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     }
                 }
                 $data['gallery_images'] = $results;
+            }
+
+            if ($this->_isMyListing) {
+                if (!empty($schema['properties']['id'])) {
+                    $location = $this->_rest_get_address_lat_lng_data($data);
+                    $data['newaddress'] = $location['address'];
+                    $data['newlat'] = $location['lat'];
+                    $data['newlng'] = $location['lng'];
+                }
             }
 
             $has_password_filter = false;

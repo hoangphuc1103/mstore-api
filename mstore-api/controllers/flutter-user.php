@@ -220,16 +220,6 @@ class FlutterUserController extends FlutterBaseController
             ),
         ));
 
-        register_rest_route($this->namespace, '/test_push_notification', array(
-            array(
-                'methods' => 'POST',
-                'callback' => array($this, 'test_push_notification'),
-                'permission_callback' => function () {
-                    return parent::checkApiPermission();
-                }
-            ),
-        ));
-
         register_rest_route($this->namespace, '/digits/register/check', array(
             array(
                 'methods' => 'POST',
@@ -433,6 +423,7 @@ class FlutterUserController extends FlutterBaseController
                 }
 
                 $user['role'] = isset($params["role"]) ? sanitize_text_field($params["role"]) : get_option('default_role');
+                $_POST['user_role'] = $user['role'];//fix to register account with role in listeo
                 $user_id = wp_insert_user($user);
 
                 if (is_wp_error($user_id)) {
@@ -460,10 +451,10 @@ class FlutterUserController extends FlutterBaseController
         $usernameReq = $params["username"];
         $emailReq = $params["email"];
         $role = $params["role"];
-        if(in_array('dokan_enable_selling', $params)){
+        if( isset($params['dokan_enable_selling'])){
 			$dokan_enable_selling  =  $params['dokan_enable_selling'];
 		}
-        if(in_array('wcfm_membership_application_status', $params)){
+        if(isset($params['wcfm_membership_application_status'])){
 			$wcfm_membership_application_status = $params['wcfm_membership_application_status'];
 		}
         if (isset($role)) {
@@ -540,6 +531,10 @@ class FlutterUserController extends FlutterBaseController
 
         if(isset( $wcfm_membership_application_status) &&  $wcfm_membership_application_status == 'pending'){
             update_user_meta($user_id,'wcfm_membership_application_status',$wcfm_membership_application_status);
+            update_user_meta($user_id,'store_name', $user['display_name']);
+            update_user_meta($user_id,'temp_wcfm_membership', -1);
+            global $WCFMvm;
+            $WCFMvm->send_approval_reminder_admin( $user_id );
         }
 
         if(isset($dokan_enable_selling) && $dokan_enable_selling == false){
@@ -1003,32 +998,41 @@ class FlutterUserController extends FlutterBaseController
         }
         if (isset($params->first_name)) {
             $user_update['first_name'] = $params->first_name;
+            update_user_meta($user_id, 'shipping_first_name', $params->first_name, '');
             update_user_meta($user_id, 'billing_first_name', $params->first_name, '');
         }
         if (isset($params->last_name)) {
             $user_update['last_name'] = $params->last_name;
+            update_user_meta($user_id, 'shipping_last_name', $params->last_name, '');
             update_user_meta($user_id, 'billing_last_name', $params->last_name, '');
         }
         if (isset($params->shipping_company)) {
             update_user_meta($user_id, 'shipping_company', $params->shipping_company, '');
+            update_user_meta($user_id, 'billing_company', $params->shipping_company, '');
         }
         if (isset($params->shipping_state)) {
             update_user_meta($user_id, 'shipping_state', $params->shipping_state, '');
+            update_user_meta($user_id, 'billing_state', $params->shipping_state, '');
         }
         if (isset($params->shipping_address_1)) {
             update_user_meta($user_id, 'shipping_address_1', $params->shipping_address_1, '');
+            update_user_meta($user_id, 'billing_address_1', $params->shipping_address_1, '');
         }
         if (isset($params->shipping_address_2)) {
             update_user_meta($user_id, 'shipping_address_2', $params->shipping_address_2, '');
+            update_user_meta($user_id, 'billing_address_2', $params->shipping_address_2, '');
         }
         if (isset($params->shipping_city)) {
             update_user_meta($user_id, 'shipping_city', $params->shipping_city, '');
+            update_user_meta($user_id, 'billing_city', $params->shipping_city, '');
         }
         if (isset($params->shipping_country)) {
             update_user_meta($user_id, 'shipping_country', $params->shipping_country, '');
+            update_user_meta($user_id, 'billing_country', $params->shipping_country, '');
         }
         if (isset($params->shipping_postcode)) {
             update_user_meta($user_id, 'shipping_postcode', $params->shipping_postcode, '');
+            update_user_meta($user_id, 'billing_postcode', $params->shipping_postcode, '');
         }
         if (isset($params->meta_data) && is_array($params->meta_data)) {
             foreach ($params->meta_data as $item) {
@@ -1170,47 +1174,6 @@ class FlutterUserController extends FlutterBaseController
         }
     }
 
-    public function test_push_notification()
-    {
-        $json = file_get_contents('php://input');
-        $params = json_decode($json);
-        $email = $params->email;
-        $is_manager = $params->is_manager;
-        $is_delivery = $params->is_delivery;
-        $user = get_user_by('email', $email);
-        $user_id = $user->ID;
-        $serverKey = get_option("mstore_firebase_server_key");
-        $status = false;
-        $is_onesignal = $params->is_onesignal;
-        if($is_onesignal){
-            $status = one_signal_push_notification("Fluxstore", "Test push notification", array($user_id));
-            return ['status' => $status];
-        }
-        if (isset($is_manager)) {
-            if ($is_manager) {
-                $deviceToken = get_user_meta($user_id, 'mstore_manager_device_token', true);
-                if ($deviceToken) {
-                    $status = pushNotification("Fluxstore", "Test push notification", $deviceToken);
-                }
-            }
-            return ["deviceToken" => $deviceToken, 'serverKey' => $serverKey, 'status' => $status];
-        }
-        if (isset($is_delivery)) {
-            if ($is_delivery) {
-                $deviceToken = get_user_meta($user_id, 'mstore_delivery_device_token', true);
-                if ($deviceToken) {
-                    $status = pushNotification("Fluxstore", "Test push notification", $deviceToken);
-                }
-            }
-            return ["deviceToken" => $deviceToken, 'serverKey' => $serverKey, 'status' => $status];
-        }
-        $deviceToken = get_user_meta($user_id, 'mstore_device_token', true);
-        if ($deviceToken) {
-            $status = pushNotification("Fluxstore", "Test push notification", $deviceToken);
-        }
-        return ["deviceToken" => $deviceToken, 'serverKey' => $serverKey, 'status' => $status];
-    }
-
     function chat_notification()
     {
         $json = file_get_contents('php://input');
@@ -1252,6 +1215,10 @@ class FlutterUserController extends FlutterBaseController
 
         $_POST['digits'] = 1;
 
+        if (dig_isWhatsAppEnabled() && $params['whatsapp'] == true) {
+            $_POST['whatsapp'] = 1;
+        }
+
         if (isset($params['type'])) {
             $type = $params['type'];
             if ($type == 'login') {
@@ -1281,6 +1248,9 @@ class FlutterUserController extends FlutterBaseController
         if (isset($params['name'])) {
             $_POST['digits_reg_name'] = $params['name'];
         }
+        if (isset($params['last_name'])) {
+            $_POST['digits_reg_lastname'] = $params['last_name'];
+        }
         if (isset($params['country_code'])) {
             $_POST['digregcode'] = $params['country_code'];
         }
@@ -1296,6 +1266,7 @@ class FlutterUserController extends FlutterBaseController
         $_POST['dig_nounce'] = wp_create_nonce('dig_form');
         $_POST['crsf-otp'] = wp_create_nonce('crsf-otp');
 
+        $_POST['digits_reg_password'] = wp_generate_password();
         $_REQUEST['json'] = 1;
     }
 
