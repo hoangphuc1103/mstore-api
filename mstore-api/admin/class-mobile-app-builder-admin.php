@@ -217,7 +217,6 @@ class Mobile_App_Builder_Admin {
          */
         function mstore_frontend_script()
         {
-            wp_enqueue_script('my_script', plugins_url('assets/js/mstore-inspireui.js', MSTORE_PLUGIN_FILE), array('jquery'), '1.0.0', true);
             wp_localize_script('my_script', 'MyAjax', array('ajaxurl' => admin_url('admin-ajax.php')));
         }
 
@@ -367,7 +366,7 @@ class Mobile_App_Builder_Admin {
         if (is_order_received_page()) {
             $detect = new MDetect;
             if ($detect->isMobile()) {
-                wp_register_style('mstore-order-custom-style', plugins_url('assets/css/mstore-order-style.css', MSTORE_PLUGIN_FILE));
+                wp_register_style('mstore-order-custom-style', plugin_dir_url( __FILE__ ) . 'css/mstore-order-style.css');
                 wp_enqueue_style('mstore-order-custom-style');
             }
         }
@@ -435,7 +434,7 @@ class Mobile_App_Builder_Admin {
 		 */
 
 		wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/mobile-app-builder-admin.js', array( 'jquery' ), $this->version, false );
-
+        wp_enqueue_script('my_script', plugin_dir_url( __FILE__ ) . 'js/mstore-inspireui.js', array('jquery'), '1.0.0', true);
 	}
 
 }
