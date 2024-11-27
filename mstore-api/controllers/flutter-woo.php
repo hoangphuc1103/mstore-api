@@ -62,6 +62,16 @@ class FlutterWoo extends FlutterBaseController
             ),
         ));
 
+        register_rest_route($this->namespace, '/estimated_delivery_dates', array(
+            array(
+                'methods' => "GET",
+                'callback' => array($this, 'get_estimated_delivery_date'),
+                'permission_callback' => function () {
+                    return parent::checkApiPermission();
+                }
+            ),
+        ));
+
         register_rest_route($this->namespace, '/payment_methods', array(
             array(
                 'methods' => WP_REST_Server::CREATABLE,
@@ -1305,6 +1315,106 @@ class FlutterWoo extends FlutterBaseController
         $review = get_comment( $comment_id );
         $response = $controller->prepare_item_for_response( $review, $request );
         return $response;
+    }
+
+    public function get_estimated_delivery_date($request) {
+        if (is_plugin_active('wpc-estimated-delivery-date/wpc-estimated-delivery-date.php')) {
+            try {
+                // Get settings and rules option
+                $settings = get_option('wpced_settings', []);
+                $rules = get_option('wpced_rules', []);
+                
+                // Format response data
+                $response = [
+                    'settings' => [
+                        // Display configuration
+                        'date_format' => [
+                            'value' => isset($settings['date_format']) ? $settings['date_format'] : 'M j, Y',
+                            'custom' => isset($settings['date_format_custom']) ? $settings['date_format_custom'] : ''
+                        ],
+                        'message' => isset($settings['message']) ? $settings['message'] : 'Estimated delivery date: %s',
+                        
+                        // Display position
+                        'position' => [
+                            'archive' => isset($settings['position_archive']) ? $settings['position_archive'] : 'above_add_to_cart',
+                            'single' => isset($settings['position_single']) ? $settings['position_single'] : '31'
+                        ],
+                        
+                        // Cart/order configuration
+                        'cart' => [
+                            'show_overall' => isset($settings['cart_overall']) ? $settings['cart_overall'] === 'yes' : false,
+                            'show_items' => isset($settings['cart_item']) ? $settings['cart_item'] === 'yes' : false
+                        ],
+                        'order' => [
+                            'show_items' => isset($settings['order_item']) ? $settings['order_item'] === 'yes' : false
+                        ],
+                        
+                        // Time configuration
+                        'extra_time_line' => isset($settings['extra_time_line']) ? $settings['extra_time_line'] : '15:00',
+                        'reload_dates' => isset($settings['reload_dates']) ? $settings['reload_dates'] === 'yes' : false,
+                        
+                        // Day skipped
+                        'skipped_dates' => !empty($settings['skipped_dates']) ? array_map(function($date) {
+                            return [
+                                'type' => $date['type'],
+                                'name' => $this->get_day_name($date['type']),
+                                'value' => isset($date['val']) ? $date['val'] : ''
+                            ];
+                        }, $settings['skipped_dates']) : [],
+                    ],
+                    
+                    // Delivery Rules
+                    'rules' => array_map(function($rule, $key) {
+                        return [
+                            'id' => $key,
+                            'name' => isset($rule['name']) ? $rule['name'] : '',
+                            'min_days' => isset($rule['min']) ? (int)$rule['min'] : 5,
+                            'max_days' => isset($rule['max']) ? (int)$rule['max'] : 10,
+                            'apply' => [
+                                'type' => isset($rule['apply']) ? $rule['apply'] : 'all',
+                                'compare' => isset($rule['apply_compare']) ? $rule['apply_compare'] : 'equal',
+                                'number' => isset($rule['apply_number']) ? $rule['apply_number'] : '0',
+                                'values' => isset($rule['apply_val']) ? (array)$rule['apply_val'] : []
+                            ],
+                            'shipping' => [
+                                'zone' => isset($rule['zone']) ? $rule['zone'] : 'all',
+                                'method' => isset($rule['method']) ? $rule['method'] : 'all'
+                            ],
+                            'scheduled' => isset($rule['scheduled']) ? $rule['scheduled'] : ''
+                        ];
+                    }, $rules, array_keys($rules)),
+                    
+                    // Additional information
+                    'info' => [
+                        'shortcode' => '[wpced]',
+                        'current_time' => current_time('mysql'),
+                        'timezone' => wp_timezone_string()
+                    ]
+                ];
+                
+                return new WP_REST_Response($response, 200);
+    
+            } catch (Exception $e) {
+                return new WP_Error('estimated_delivery_error', $e->getMessage(), array('status' => 500));
+            }
+        } else {
+            return parent::send_invalid_plugin_error("You need to install and active WPC Estimated Delivery Date for WooCommerce plugin to use this api");
+        }
+    }
+    
+    // Helper function to get the name of the day of the week
+    private function get_day_name($type) {
+        $days = [
+            '0' => 'Sunday',
+            '1' => 'Monday', 
+            '2' => 'Tuesday',
+            '3' => 'Wednesday',
+            '4' => 'Thursday',
+            '5' => 'Friday',
+            '6' => 'Saturday',
+            'cus' => 'Custom'
+        ];
+        return isset($days[$type]) ? $days[$type] : '';
     }
 
     public function get_ddates($request)
