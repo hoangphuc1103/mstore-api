@@ -1332,7 +1332,24 @@ class FlutterWoo extends FlutterBaseController
                             'value' => isset($settings['date_format']) ? $settings['date_format'] : 'M j, Y',
                             'custom' => isset($settings['date_format_custom']) ? $settings['date_format_custom'] : ''
                         ],
-                        'message' => isset($settings['message']) ? $settings['message'] : 'Estimated delivery date: %s',
+                        // Different message types
+                        'messages' => [
+                        'both_days' => isset($settings['message_both_days']) 
+                        ? $settings['message_both_days'] 
+                        : 'Estimated delivery date: %s',
+                        'min_days_only' => isset($settings['message_min_days']) 
+                        ? $settings['message_min_days'] 
+                        : 'Earliest estimated delivery date: %s',
+                        'max_days_only' => isset($settings['message_max_days']) 
+                        ? $settings['message_max_days'] 
+                        : 'Latest estimated delivery date: %s',
+                        'cart_item' => isset($settings['message_cart_item']) 
+                        ? $settings['message_cart_item'] 
+                        : '[Cart] Estimated delivery date',
+                        'cart_overall' => isset($settings['message_cart_overall']) 
+                        ? $settings['message_cart_overall'] 
+                        : '[Cart Overall] Total estimated delivery date: %s',
+        ],
                         
                         // Display position
                         'position' => [
