@@ -1359,8 +1359,9 @@ class FlutterWoo extends FlutterBaseController
                         
                         // Cart/order configuration
                         'cart' => [
-                            'show_overall' => isset($settings['cart_overall']) ? $settings['cart_overall'] === 'yes' : false,
-                            'show_items' => isset($settings['cart_item']) ? $settings['cart_item'] === 'yes' : false
+                            'show_items' => isset($settings['cart_item']) && in_array($settings['cart_item'], ['yes', 'yes_data']),
+                            'show_overall' => isset($settings['cart_overall']) && in_array($settings['cart_overall'], ['yes', 'yes_text']),
+
                         ],
                         'order' => [
                             'show_items' => isset($settings['order_item']) ? $settings['order_item'] === 'yes' : false
